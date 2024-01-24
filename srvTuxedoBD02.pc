@@ -112,7 +112,7 @@ void SELECT_FML32(TPSVCINFO *rqst) {
     FBFR32* fbfr = (FBFR32*)rqst->data;
 
     strcpy(svL_paramCon.usuario_DB, "system");
-    strcpy(svL_paramCon.password_DB, "Lasangreazul2393");
+    strcpy(svL_paramCon.password_DB, "XXXXXXXXXX");
     strcpy(svL_paramCon.name_DB, "EDGG");
     t_codigo = 0;
     memset(t_autor, 0x00, sizeof(t_autor));
