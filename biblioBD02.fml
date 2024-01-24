@@ -1,0 +1,6 @@
+#name	number	type	flag	comment
+OUTPUT	5	string	-	-
+CODIGO	10	long	-	- codigo del libro
+AUTOR	20	string	-	- nombre del autor
+TITULO	30	string	-	- titulo de la obra
+DESC	40	string	-	- descripcion del libro

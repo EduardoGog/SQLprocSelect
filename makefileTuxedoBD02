@@ -1,0 +1,60 @@
+# Variables
+PROC = $(ORACLE_HOME)/bin/proc
+PROC_CFLAGS = code=ANSI_C
+PROCINCLUDES = include=include include=/usr/include include=/usr/lib/gcc/x86_64-redhat-linux/4.8.2/include include=/usr/include/linux sys_include=/usr/include include=../inc
+PROCFLAGS = $(PROC_CFLAGS) $(PROCINCLUDES)
+
+# Directorios/Rutas
+BIN = ../bin
+OBJ = ../obj
+SRC = ../src
+INC = ../inc
+FML = ../fml
+CC = gcc
+
+# Generacion de Aplicacion
+all: campos_fml precompila srvTuxedoBD02 cliTuxedoBD01_select
+
+# Compilacion de Campos FML
+campos_fml: $(FML)/biblioBD02.fml
+	mkfldhdr32 $(FML)/biblioBD02.fml
+	mv biblioBD02.fml.h $(INC)
+
+# Precompilación
+precompila:
+	@echo "Precompilando ..."
+	$(PROC) $(PROCFLAGS) include=/usr/include/c++/4.8.2/x86_64-redhat-linux include=$(ORACLE_HOME)/precomp/public include=$(ORACLE_HOME)/rdbms/public include=../inc include=$(TUXDIR)/include $(SRC)/srvTuxedoBD02.pc
+
+# Generacion de Servidores
+srvTuxedoBD02: $(OBJ)/srvTuxedoBD02.o
+	@echo Compilando el servidor srvTuxedoBD02
+	buildserver -v -f $(OBJ)/srvTuxedoBD02.o \
+		-f "-I$(INC)" \
+		-l "-L$(ORACLE_HOME)/lib" \
+		-o "$(BIN)/srvTuxedoBD02 -lclntsh" \
+		-s SELECT_FML32
+
+# Generacion de Clientes
+cliTuxedoBD01_select: $(OBJ)/cliTuxedoBD01_select.o
+	@echo Compilando el cliente cliTuxedoBD01_select
+	buildclient -f $(OBJ)/cliTuxedoBD01_select.o -o $(BIN)/cliTuxedoBD01_select
+
+# Generacion de Ficheros Objeto
+$(OBJ)/srvTuxedoBD02.o: $(SRC)/srvTuxedoBD02.c
+	@echo "Genera objetos ..."
+	$(CC) -c -I/usr/include/c++/4.8.2/x86_64-redhat-linux \
+		-I$(ORACLE_HOME)/precomp/public -I$(ORACLE_HOME)/rdbms/public -I../inc \
+		-I$(TUXDIR)/include -L$(ORACLE_HOME)/lib -L$(TUXDIR)/lib $(SRC)/srvTuxedoBD02.c -o \
+		$(OBJ)/srvTuxedoBD02.o -lclntsh -lfml32 -ltux
+
+$(OBJ)/cliTuxedoBD01_select.o: $(SRC)/cliTuxedoBD01_select.c
+	$(CC) -c -I../inc -I$(TUXDIR)/include $(SRC)/cliTuxedoBD01_select.c -o \
+		$(OBJ)/cliTuxedoBD01_select.o
+
+# Borrado
+cleanAll:
+	rm $(OBJ)/*.o
+
+cleanElem:
+	rm $(OBJ)/srvTuxedoBD02.o $(OBJ)/cliTuxedoBD01_select.o
+

@@ -1,0 +1,173 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <atmi.h>
+#include <userlog.h>
+#include <fml32.h>
+#include <tx.h>
+#include "biblioBD02.fml.h"
+#include <sqlca.h>
+#include <sqlda.h>
+#include <oraca.h>
+
+EXEC SQL INCLUDE SQLCA;
+
+EXEC SQL BEGIN DECLARE SECTION;
+EXEC SQL DECLARE ORACLE2 DATABASE;
+EXEC SQL END DECLARE SECTION;
+
+typedef struct {
+    char usuario_DB[50];
+    char password_DB[50];
+    char name_DB[50];
+} paramConexion;
+
+int conectando_aBD(paramConexion *spA_paramCon) {
+    int iRetValue = 0;
+    EXEC SQL BEGIN DECLARE SECTION;
+    char zaO_usuario_[50];
+    char zaO_password[50];
+    char zaO_dbnameBD[50];
+    EXEC SQL END DECLARE SECTION;
+    strcpy(zaO_usuario_, spA_paramCon->usuario_DB);
+    strcpy(zaO_password, spA_paramCon->password_DB);
+    strcpy(zaO_dbnameBD, spA_paramCon->name_DB);
+    EXEC SQL WHENEVER SQLERROR DO iRetValue = sqlError("Error conexion");
+    EXEC SQL CONNECT :zaO_usuario_ IDENTIFIED by :zaO_password 
+    AT ORACLE2 USING :zaO_dbnameBD;
+    return iRetValue;
+}
+
+void cierraConexion() {
+    EXEC SQL WHENEVER SQLERROR CONTINUE;
+    if (!sqlca.sqlcode) {
+        EXEC SQL AT ORACLE2 COMMIT WORK RELEASE;
+    } else {
+        EXEC SQL AT ORACLE2 ROLLBACK RELEASE;
+    }
+}
+
+char *ajustaCampos(char zaA_Campo[2000]) {
+    int ivL_obtenTam;
+    int ivL_contIter;
+    int ivL_siEspacs;
+    int ivL_noEspacs;
+
+    ivL_obtenTam = strlen(zaA_Campo);
+    ivL_contIter = 0;
+    ivL_siEspacs = 0;
+    ivL_noEspacs = 0;
+
+    for (ivL_contIter = 0; ivL_contIter < ivL_obtenTam && zaA_Campo[ivL_contIter] == ' '; ivL_contIter++) {
+        ivL_siEspacs++;
+    }
+
+    if (ivL_siEspacs == ivL_obtenTam) {
+        return (char *)"\0";
+    } else {
+        if (ivL_siEspacs < ivL_obtenTam) {
+            for (ivL_contIter = ivL_obtenTam - 1; ivL_contIter >= 0 && zaA_Campo[ivL_contIter] == ' '; ivL_contIter--) {
+                ivL_noEspacs++;
+            }
+            zaA_Campo[ivL_obtenTam - ivL_noEspacs] = '\0';
+            return (char *)zaA_Campo;
+        }
+    }
+}
+
+int sqlError(const char*zpA_cadError) {
+    char zaL_errorOra[512];
+    long unsigned int ivL_longCadn;
+    long unsigned int ivL_longMens;
+    sqlglm(zaL_errorOra, &ivL_longCadn, &ivL_longMens);
+    printf("ERROR DE SISTEMA, ocurrió un error en BD \n");
+    printf("Error encontrado : %s \n", zpA_cadError);
+    printf("Error de Oracle : %s \n", zaL_errorOra);
+    return -1;
+}
+
+int tpsvrinit(int argc, char *argv[]) {
+    int iRetValue = 0;
+    paramConexion svL_paramCon;
+
+    /* Se inicializan acciones en esta funcion */
+    userlog("Iniciando srvTuxedoBD01D");
+    return (iRetValue);
+}
+
+void SELECT_FML32(TPSVCINFO *rqst) {
+    FLDLEN32 flen;
+    paramConexion svL_paramCon;
+    char msgbuf[256];
+    int iRetValue = 0;
+
+    EXEC SQL BEGIN DECLARE SECTION;
+    int t_codigo;
+    char t_autor[51];
+    char t_titulo[151];
+    char t_desc[251];
+    EXEC SQL END DECLARE SECTION;
+
+    FBFR32* fbfr = (FBFR32*)rqst->data;
+
+    strcpy(svL_paramCon.usuario_DB, "system");
+    strcpy(svL_paramCon.password_DB, "Lasangreazul2393");
+    strcpy(svL_paramCon.name_DB, "EDGG");
+    t_codigo = 0;
+    memset(t_autor, 0x00, sizeof(t_autor));
+    memset(t_titulo, 0x00, sizeof(t_titulo));
+    memset(t_desc, 0x00, sizeof(t_desc));
+
+    userlog("Servicio SELECT_FML32 Invocado");
+
+    /* Obtenemos los campos */
+    if (Fget32(fbfr, AUTOR, 0, t_autor, 0) < 0) {
+        userlog("Error Fget32(AUTOR): %s", Fstrerror32(Ferror32));
+        tpreturn(TPFAIL, 0, rqst->data, 0L, 0);
+    }
+    userlog("Buscar autor: [%s]", t_autor);
+
+    Finit32(fbfr, Fsizeof32(fbfr));
+
+    userlog("Conectando a la BD");
+    conectando_aBD(&svL_paramCon);
+
+    /* Declaramos y Abrimos Cursor */
+    EXEC SQL AT ORACLE2 DECLARE cu_bibAutor CURSOR FOR 
+        SELECT codigo, autor, titulo, descrp 
+        FROM biblio
+        WHERE autor = :t_autor;
+
+    if (sqlca.sqlcode != 0) {
+        userlog("Error Declare Cursor: %d-%s", sqlca.sqlcode, sqlca.sqlerrm.sqlerrmc);
+        tpreturn(TPFAIL, 0, rqst->data, 0L, 0);
+    }
+
+    EXEC SQL AT ORACLE2 OPEN cu_bibAutor;
+    if (sqlca.sqlcode != 0) {
+        userlog("Error Open Cursor: %d-%s", sqlca.sqlcode, sqlca.sqlerrm.sqlerrmc);
+        tpreturn(TPFAIL, 0, rqst->data, 0L, 0);
+    }
+
+    EXEC SQL AT ORACLE2 FETCH cu_bibAutor INTO :t_codigo, :t_autor, :t_titulo, :t_desc;
+
+    while (sqlca.sqlcode == 0) {
+        Fadd32(fbfr, CODIGO, (char*)&t_codigo, 0);
+        userlog(" Codigo: [%d]", t_codigo);
+        Fadd32(fbfr, AUTOR, ajustaCampos(t_autor), 0);
+        userlog(" Autor : [%s]", ajustaCampos(t_autor));
+        Fadd32(fbfr, TITULO, ajustaCampos(t_titulo), 0);
+        userlog(" Titulo: [%s]", ajustaCampos(t_titulo));
+        Fadd32(fbfr, DESC, ajustaCampos(t_desc), 0);
+        userlog(" Desc : [%s]", ajustaCampos(t_desc));
+        EXEC SQL AT ORACLE2 FETCH cu_bibAutor INTO :t_codigo, :t_autor, :t_titulo, :t_desc;
+    }
+
+    EXEC SQL CLOSE cu_bibAutor;
+    userlog("Select exitoso");
+    // Fchg32(fbfr, OUTPUT, 0, msgbuf, 0);
+    cierraConexion();
+    tpreturn(TPSUCCESS, 0, (char *)fbfr, sizeof(fbfr), 0);
+}
+
